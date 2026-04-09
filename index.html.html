@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Sistema de Avaliação PRO+</title>
+
+<style>
+:root{
+  --bg:#0f172a;
+  --card:#1e293b;
+  --text:white;
+}
+
+.light{
+  --bg:#f1f5f9;
+  --card:#ffffff;
+  --text:#0f172a;
+}
+
+body{
+  font-family:Arial;
+  background:var(--bg);
+  color:var(--text);
+  margin:0;
+  padding:20px;
+  transition:0.3s;
+}
+
+.container{max-width:900px;margin:auto}
+
+.card{
+  background:var(--card);
+  padding:20px;
+  border-radius:12px;
+  margin-bottom:15px;
+  box-shadow:0 4px 15px rgba(0,0,0,0.2)
+}
+
+input,select,textarea{
+  width:100%;
+  padding:10px;
+  margin-top:8px;
+  border-radius:8px;
+  border:none;
+  background:rgba(0,0,0,0.2);
+  color:var(--text);
+}
+
+button{
+  background:#3b82f6;
+  color:white;
+  padding:10px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  margin-top:10px;
+}
+
+button:hover{background:#2563eb}
+
+.small-btn{
+  width:auto;
+  padding:6px 12px;
+  margin-right:5px;
+}
+
+.danger{
+  background:#ef4444;
+}
+.danger:hover{
+  background:#dc2626;
+}
+
+.result-card{
+  background:rgba(0,0,0,0.2);
+  padding:10px;
+  border-radius:8px;
+  margin-top:10px;
+}
+</style>
+
+</head>
+<body>
+
+<div class="container">
+
+<h1>🔥 Sistema de Avaliação PRO+</h1>
+
+<button onclick="toggleTema()">🌙 / ☀️ Alternar Tema</button>
+
+<div class="card">
+<h3>Criar Grupo</h3>
+<input id="nome" placeholder="Nome do grupo">
+<input id="membros" placeholder="Membros: João, Maria, Pedro">
+<input id="criterios" placeholder="Critérios: Participação, Entrega">
+<button onclick="criar()">Criar Grupo</button>
+</div>
+
+<div id="lista"></div>
+</div>
+
+<script>
+var grupos = JSON.parse(localStorage.getItem('grupos')) || [];
+var tema = localStorage.getItem('tema') || 'dark';
+
+if(tema === 'light'){
+  document.body.classList.add('light');
+}
+
+function salvarStorage(){
+  localStorage.setItem('grupos', JSON.stringify(grupos));
+}
+
+function salvarTema(){
+  localStorage.setItem('tema', tema);
+}
+
+function toggleTema(){
+  document.body.classList.toggle('light');
+  tema = document.body.classList.contains('light') ? 'light' : 'dark';
+  salvarTema();
+}
+
+function criar(){
+  var nome = document.getElementById('nome').value.trim();
+  var membros = document.getElementById('membros').value.split(',').map(m=>m.trim()).filter(m=>m);
+  var criterios = document.getElementById('criterios').value.split(',').map(c=>c.trim()).filter(c=>c);
+
+  if(!nome || membros.length<2 || criterios.length<1){
+    alert('Preencha corretamente');
+    return;
+  }
+
+  grupos.push({
+    nome,
+    membros,
+    criterios,
+    avaliacoes:[],
+    criadoEm: new Date().toLocaleString()
+  });
+
+  salvarStorage();
+  render();
+}
+
+function apagarGrupo(i){
+  if(confirm('Tem certeza que deseja apagar o grupo?')){
+    grupos.splice(i,1);
+    salvarStorage();
+    render();
+  }
+}
+
+function render(){
+  var div = document.getElementById('lista');
+  div.innerHTML = '';
+
+  grupos.forEach((g,index)=>{
+
+    var card = document.createElement('div');
+    card.className='card';
+
+    card.innerHTML = `
+      <h3>${g.nome}</h3>
+      <p><b>Criado em:</b> ${g.criadoEm}</p>
+
+      <select id="avaliador_${index}">
+        ${g.membros.map(m=>`<option>${m}</option>`).join('')}
+      </select>
+
+      <button class="small-btn" onclick="abrirAvaliacao(${index})">Avaliar</button>
+      <button class="small-btn" onclick="ver(${index})">Resultados</button>
+      <button class="small-btn danger" onclick="apagarGrupo(${index})">Apagar</button>
+
+      <div id="avaliacao_${index}"></div>
+      <div id="resultado_${index}"></div>
+    `;
+
+    div.appendChild(card);
+  });
+}
+
+function abrirAvaliacao(i){
+  var g = grupos[i];
+  var avaliador = document.getElementById('avaliador_'+i).value;
+
+  var jaAvaliou = g.avaliacoes.some(a=>a.avaliador===avaliador);
+  if(jaAvaliou){
+    alert('Você já avaliou!');
+    return;
+  }
+
+  var area = document.getElementById('avaliacao_'+i);
+  area.innerHTML = `<h4>Avaliando como: ${avaliador}</h4>`;
+
+  var html = '';
+
+  g.membros.forEach(m=>{
+    if(m===avaliador) return;
+
+    html += `<div class='card'><b>${m}</b>`;
+
+    g.criterios.forEach(c=>{
+      html += `<p>${c}</p>`;
+      html += `<input type='number' min='0' max='10' id='${i}_${m}_${c}'>`;
+    });
+
+    html += `<textarea placeholder='Comentário' id='coment_${i}_${m}'></textarea>`;
+    html += `</div>`;
+  });
+
+  html += `<button onclick='salvarAvaliacao(${i})'>Salvar</button>`;
+  area.innerHTML += html;
+}
+
+function salvarAvaliacao(i){
+  var g = grupos[i];
+  var avaliador = document.getElementById('avaliador_'+i).value;
+
+  var dados = {};
+
+  g.membros.forEach(m=>{
+    if(m===avaliador) return;
+
+    dados[m] = {notas:{},comentario:''};
+
+    g.criterios.forEach(c=>{
+      var val = document.getElementById(`${i}_${m}_${c}`).value;
+      dados[m].notas[c] = Number(val);
+    });
+
+    dados[m].comentario = document.getElementById(`coment_${i}_${m}`).value;
+  });
+
+  g.avaliacoes.push({avaliador,dados});
+  salvarStorage();
+
+  alert('Salvo!');
+  render();
+}
+
+function ver(i){
+  var g = grupos[i];
+
+  var ranking = g.membros.map(m=>{
+    var total=0,count=0;
+
+    g.avaliacoes.forEach(av=>{
+      if(av.dados[m]){
+        for(var c in av.dados[m].notas){
+          total += av.dados[m].notas[c];
+          count++;
+        }
+      }
+    });
+
+    return {
+      nome:m,
+      media: count? (total/count) : 0
+    };
+  });
+
+  ranking.sort((a,b)=>b.media-a.media);
+
+  var html = '<h3>🏆 Ranking</h3>';
+
+  ranking.forEach((p,pos)=>{
+    html += `
+      <div class="result-card">
+        <b>#${pos+1} - ${p.nome}</b>
+        <p>Média: ${p.media.toFixed(1)}</p>
+      </div>
+    `;
+  });
+
+  document.getElementById('resultado_'+i).innerHTML = html;
+}
+
+render();
+</script>
+
+</body>
+</html>
